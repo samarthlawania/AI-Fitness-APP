@@ -1,0 +1,183 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "AI Fitness Coach API",
+    "version": "1.0.0",
+    "description": "Production-ready API for AI Fitness Coach application with LLM integration, authentication, and background processing"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:3001",
+      "description": "Development server"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    },
+    "schemas": {
+      "User": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "email": { "type": "string" },
+          "name": { "type": "string" },
+          "age": { "type": "integer" },
+          "gender": { "type": "string", "enum": ["male", "female", "other"] },
+          "height": { "type": "number" },
+          "weight": { "type": "number" },
+          "fitnessLevel": { "type": "string", "enum": ["beginner", "intermediate", "advanced"] },
+          "fitnessGoal": { "type": "string", "enum": ["weight_loss", "muscle_gain", "endurance", "general_fitness"] },
+          "createdAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "Plan": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "userId": { "type": "string" },
+          "workoutPlan": { "type": "array" },
+          "dietPlan": { "type": "array" },
+          "metadata": { "type": "object" },
+          "status": { "type": "string", "enum": ["generating", "completed", "failed"] },
+          "createdAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": { "type": "string" },
+          "details": { "type": "string" },
+          "requestId": { "type": "string" }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/api/auth/register": {
+      "post": {
+        "summary": "Register a new user",
+        "tags": ["Authentication"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["name", "email", "password"],
+                "properties": {
+                  "name": { "type": "string", "minLength": 2, "maxLength": 100 },
+                  "email": { "type": "string", "format": "email" },
+                  "password": { "type": "string", "minLength": 8, "maxLength": 100 }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "User registered successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "user": { "$ref": "#/components/schemas/User" },
+                    "accessToken": { "type": "string" },
+                    "refreshToken": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "description": "Validation error" },
+          "409": { "description": "User already exists" }
+        }
+      }
+    },
+    "/api/plans/generate": {
+      "post": {
+        "summary": "Generate a new fitness plan",
+        "tags": ["Plans"],
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["age", "gender", "height", "weight", "fitnessGoal", "fitnessLevel"],
+                "properties": {
+                  "age": { "type": "integer", "minimum": 13, "maximum": 120 },
+                  "gender": { "type": "string", "enum": ["male", "female", "other"] },
+                  "height": { "type": "number", "minimum": 100, "maximum": 250 },
+                  "weight": { "type": "number", "minimum": 30, "maximum": 300 },
+                  "fitnessGoal": { "type": "string", "enum": ["weight_loss", "muscle_gain", "endurance", "general_fitness"] },
+                  "fitnessLevel": { "type": "string", "enum": ["beginner", "intermediate", "advanced"] },
+                  "location": { "type": "string", "maxLength": 100 },
+                  "dietaryPref": { "type": "string", "enum": ["vegetarian", "vegan", "keto", "paleo", "none"] },
+                  "medicalNotes": { "type": "string", "maxLength": 500 }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Plan generation started",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "planId": { "type": "string" },
+                    "jobId": { "type": "string" },
+                    "status": { "type": "string" },
+                    "statusUrl": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "description": "Validation error" },
+          "401": { "description": "Unauthorized" },
+          "429": { "description": "Rate limit exceeded" }
+        }
+      }
+    },
+    "/healthz": {
+      "get": {
+        "summary": "Health check endpoint",
+        "tags": ["Health"],
+        "responses": {
+          "200": {
+            "description": "Service is healthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": { "type": "string" },
+                    "timestamp": { "type": "string" },
+                    "services": {
+                      "type": "object",
+                      "properties": {
+                        "database": { "type": "string" },
+                        "redis": { "type": "string" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": { "description": "Service is unhealthy" }
+        }
+      }
+    }
+  }
+}

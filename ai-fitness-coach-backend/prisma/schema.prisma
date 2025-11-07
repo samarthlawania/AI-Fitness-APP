@@ -1,0 +1,112 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String
+  password  String
+  
+  // Profile data
+  age       Int?
+  gender    String?
+  height    Float?   // in cm
+  weight    Float?   // in kg
+  location  String?
+  
+  // Preferences
+  fitnessLevel    String?  // beginner, intermediate, advanced
+  fitnessGoal     String?  // weight_loss, muscle_gain, endurance, general_fitness
+  dietaryPref     String?  // vegetarian, vegan, keto, paleo, none
+  medicalNotes    String?
+  
+  // Auth
+  refreshTokens RefreshToken[]
+  passwordResetTokens PasswordResetToken[]
+  
+  // Relations
+  plans     Plan[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  
+  @@map("refresh_tokens")
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  
+  @@map("password_reset_tokens")
+}
+
+model Plan {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Input parameters
+  age         Int
+  gender      String
+  height      Float
+  weight      Float
+  fitnessGoal String
+  fitnessLevel String
+  location    String?
+  dietaryPref String?
+  medicalNotes String?
+  
+  // Generated content
+  workoutPlan Json     // Array of workout objects
+  dietPlan    Json     // Array of diet objects
+  metadata    Json     // {calories, macros, estimation}
+  
+  // Media
+  audioUrl    String?  // TTS audio file URL
+  pdfUrl      String?  // Generated PDF URL
+  
+  // Status
+  status      String   @default("generating") // generating, completed, failed
+  jobId       String?  // BullMQ job ID
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@map("plans")
+}
+
+model Job {
+  id        String   @id @default(cuid())
+  type      String   // plan_generation, tts_generation, image_generation, pdf_generation
+  status    String   @default("pending") // pending, processing, completed, failed
+  data      Json     // Job input data
+  result    Json?    // Job result data
+  error     String?  // Error message if failed
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@map("jobs")
+}
