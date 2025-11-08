@@ -1,40 +1,51 @@
-import OpenAI from 'openai';
+// import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenAI } from '@google/genai';
 import { logger } from '../config/logger.js';
 
-// Initialize OpenAI client
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+// Initialize Gemini client
+const genAI = new GoogleGenAI(process.env.GEMINI_API_KEY);
 
-// OpenAI LLM Adapter
+// Gemini LLM Adapter
 class LLMAdapter {
   async generatePlan(prompt) {
-    return this.generateWithOpenAI(prompt);
+    return this.generateWithGemini(prompt);
   }
 
-  async generateWithOpenAI(prompt) {
+  async generateWithGemini(prompt) {
     try {
-      const response = await openai.chat.completions.create({
-        model: 'gpt-4-turbo-preview',
-        messages: [
-          {
-            role: 'system',
-            content: 'You are an expert fitness coach and nutritionist. Always respond with valid JSON only.',
-          },
-          {
-            role: 'user',
-            content: prompt,
-          },
-        ],
-        temperature: 0.7,
-        max_tokens: 4000,
-        response_format: { type: 'json_object' },
-      });
+      // Try to list available models first
+      // try {
+      //   const models = await genAI.listModels();
+      //   logger.info('Available Gemini models:', models.map(m => m.name));
+      // } catch (listError) {
+      //   logger.warn('Could not list models:', listError.message);
+      // }
+      
+      // const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+      
+      const enhancedPrompt = `You are an expert fitness coach and nutritionist. Create a comprehensive fitness and diet plan. Respond with ONLY valid JSON, no additional text.
 
-      return response.choices[0].message.content;
+${prompt}`;
+      
+      const result = await genAI.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: enhancedPrompt,
+      });
+      const text = result.text;
+      
+      // Clean the response to ensure it's valid JSON
+      const cleanedText = text.replace(/```json\n?|```\n?/g, '').trim();
+      
+      return cleanedText;
     } catch (error) {
-      logger.error('OpenAI API error:', error);
-      throw new Error('Failed to generate plan with OpenAI');
+      console.log('Gemini API errorrrrr:', error);
+      logger.error('Gemini API error:', {
+        message: error.message,
+        status: error.status,
+        statusText: error.statusText,
+        details: error.details || error.response?.data
+      });
+      throw new Error(`Failed to generate plan with Gemini: ${error.message}`);
     }
   }
 

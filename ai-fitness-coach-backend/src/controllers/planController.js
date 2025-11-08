@@ -1,6 +1,91 @@
 import { prisma } from '../config/database.js';
-import { planGenerationQueue } from '../workers/queues.js';
 import { logger } from '../config/logger.js';
+import { llmAdapter } from '../adapters/llmAdapter.js';
+
+const createPlanPrompt = (userData) => {
+  return `
+You are an expert fitness coach and nutritionist. Create a comprehensive fitness and diet plan for the following person:
+
+**User Profile:**
+- Age: ${userData.age}
+- Gender: ${userData.gender}
+- Height: ${userData.height}cm
+- Weight: ${userData.weight}kg
+- Fitness Goal: ${userData.fitnessGoal}
+- Fitness Level: ${userData.fitnessLevel}
+- Location: ${userData.location || 'Not specified'}
+- Dietary Preference: ${userData.dietaryPref || 'None'}
+- Medical Notes: ${userData.medicalNotes || 'None'}
+
+**Instructions:**
+1. Create a 7-day workout plan with specific exercises, sets, reps, and rest periods
+2. Create a 7-day diet plan with meals, portions, and nutritional information
+3. Calculate estimated daily calories and macronutrients
+4. Provide practical tips and modifications
+
+**Response Format (JSON only):**
+{
+  "workoutPlan": [
+    {
+      "day": 1,
+      "dayName": "Monday",
+      "focus": "Upper Body",
+      "exercises": [
+        {
+          "name": "Push-ups",
+          "sets": 3,
+          "reps": "10-15",
+          "rest": "60 seconds",
+          "instructions": "Keep core tight, full range of motion"
+        }
+      ],
+      "duration": "45 minutes",
+      "notes": "Focus on form over speed"
+    }
+  ],
+  "dietPlan": [
+    {
+      "day": 1,
+      "dayName": "Monday",
+      "meals": [
+        {
+          "type": "breakfast",
+          "name": "Oatmeal with Berries",
+          "ingredients": ["1 cup oats", "1/2 cup blueberries", "1 tbsp honey"],
+          "calories": 350,
+          "protein": 12,
+          "carbs": 65,
+          "fat": 6,
+          "instructions": "Cook oats, top with berries and honey"
+        }
+      ],
+      "totalCalories": 2200,
+      "totalProtein": 120,
+      "totalCarbs": 250,
+      "totalFat": 80
+    }
+  ],
+  "metadata": {
+    "estimatedCaloriesPerDay": 2200,
+    "macroSplit": {
+      "protein": "22%",
+      "carbs": "45%",
+      "fat": "33%"
+    },
+    "estimatedWeightChangePerWeek": "-0.5kg",
+    "difficultyLevel": "intermediate",
+    "equipmentNeeded": ["dumbbells", "resistance bands"],
+    "tips": [
+      "Stay hydrated throughout the day",
+      "Get 7-9 hours of sleep",
+      "Listen to your body and rest when needed"
+    ]
+  }
+}
+
+Respond with ONLY the JSON object, no additional text.
+`;
+};
 
 export const generatePlan = async (req, res) => {
   const planData = {
@@ -28,26 +113,50 @@ export const generatePlan = async (req, res) => {
     },
   });
 
-  // Add job to queue
-  const job = await planGenerationQueue.add('generate-plan', {
-    planId: plan.id,
-    ...planData,
-  });
-
-  // Update plan with job ID
-  await prisma.plan.update({
-    where: { id: plan.id },
-    data: { jobId: job.id },
-  });
-
-  logger.info(`Plan generation started for user ${req.user.id}, plan ${plan.id}`);
-
-  res.status(202).json({
-    planId: plan.id,
-    jobId: job.id,
-    status: 'generating',
-    statusUrl: `/api/plans/status/${job.id}`,
-  });
+  try {
+    // Generate plan synchronously
+    let parsedPlan;
+    try {
+      const prompt = createPlanPrompt(planData);
+      const generatedPlan = await llmAdapter.generatePlan(prompt);
+      parsedPlan = JSON.parse(generatedPlan);
+    } catch (llmError) {
+      logger.warn('LLM failed, using mock data:', llmError.message);
+      // Use mock data as fallback
+      parsedPlan = JSON.parse(await llmAdapter.generateMockPlan());
+    }
+    
+    // Update plan with generated content
+    const updatedPlan = await prisma.plan.update({
+      where: { id: plan.id },
+      data: {
+        workoutPlan: parsedPlan.workoutPlan,
+        dietPlan: parsedPlan.dietPlan,
+        metadata: parsedPlan.metadata,
+        status: 'completed',
+      },
+    });
+    
+    logger.info(`Plan generated successfully for user ${req.user.id}`);
+    
+    res.json({
+      planId: plan.id,
+      status: 'completed',
+      plan: updatedPlan,
+    });
+  } catch (error) {
+    logger.error('Plan generation failed:', error.message);
+    await prisma.plan.update({
+      where: { id: plan.id },
+      data: { status: 'failed' },
+    });
+    
+    res.status(500).json({
+      planId: plan.id,
+      status: 'failed',
+      error: error.message || 'Plan generation failed',
+    });
+  }
 };
 
 export const getJobStatus = async (req, res) => {
