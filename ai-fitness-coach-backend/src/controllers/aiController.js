@@ -1,10 +1,14 @@
-import { ttsQueue, imageQueue } from '../workers/queues.js';
+import { ttsAdapter } from '../adapters/ttsAdapter.js';
 import { prisma } from '../config/database.js';
 import { logger } from '../config/logger.js';
 
 export const generateTTS = async (req, res) => {
   const { planId, text } = req.body;
   let ttsText = text;
+
+  if (!ttsText && !planId) {
+    return res.status(400).json({ error: 'Either text or planId is required' });
+  }
 
   // If planId is provided, get plan content for TTS
   if (planId) {
@@ -23,42 +27,38 @@ export const generateTTS = async (req, res) => {
       return res.status(400).json({ error: 'Plan is not ready for TTS generation' });
     }
 
-    // Generate summary text from plan
     ttsText = generatePlanSummary(plan);
   }
 
-  // Add TTS job to queue
-  const job = await ttsQueue.add('generate-tts', {
-    text: ttsText,
-    userId: req.user.id,
-    planId,
-  });
-
-  logger.info(`TTS generation started for user ${req.user.id}, job ${job.id}`);
-
-  res.json({
-    jobId: job.id,
-    status: 'processing',
-    message: 'TTS generation started',
-  });
+  try {
+    logger.info(`Generating TTS for user ${req.user.id}`);
+    
+    const audioBuffer = await ttsAdapter.generateSpeech(ttsText);
+    
+    // Return audio file directly
+    res.set({
+      'Content-Type': 'audio/mpeg',
+      'Content-Length': audioBuffer.length,
+      'Content-Disposition': 'attachment; filename="speech.mp3"'
+    });
+    
+    res.send(audioBuffer);
+  } catch (error) {
+    logger.error('TTS generation failed:', error);
+    res.status(500).json({ error: 'TTS generation failed' });
+  }
 };
 
 export const generateImage = async (req, res) => {
   const { prompt, type } = req.body;
 
-  // Add image generation job to queue
-  const job = await imageQueue.add('generate-image', {
-    prompt,
-    type,
-    userId: req.user.id,
-  });
-
-  logger.info(`Image generation started for user ${req.user.id}, job ${job.id}`);
+  logger.info(`Mock image generation for user ${req.user.id}`);
 
   res.json({
-    jobId: job.id,
-    status: 'processing',
-    message: 'Image generation started',
+    status: 'completed',
+    message: 'Image generation completed (mock)',
+    prompt,
+    type,
   });
 };
 

@@ -19,11 +19,11 @@ const ttsWorkerInstance = new Worker('tts-generation', ttsWorker, {
   concurrency: 3,
 });
 
-// Image Generation Worker
-const imageWorkerInstance = new Worker('image-generation', imageWorker, {
-  connection: redis,
-  concurrency: 2,
-});
+// Image Generation Worker (disabled)
+// const imageWorkerInstance = new Worker('image-generation', imageWorker, {
+//   connection: redis,
+//   concurrency: 2,
+// });
 
 // PDF Generation Worker
 const pdfWorkerInstance = new Worker('pdf-generation', pdfWorker, {
@@ -32,7 +32,7 @@ const pdfWorkerInstance = new Worker('pdf-generation', pdfWorker, {
 });
 
 // Worker event handlers
-const workers = [planWorker, ttsWorkerInstance, imageWorkerInstance, pdfWorkerInstance];
+const workers = [planWorker, ttsWorkerInstance, pdfWorkerInstance];
 
 workers.forEach((worker) => {
   worker.on('completed', (job) => {
